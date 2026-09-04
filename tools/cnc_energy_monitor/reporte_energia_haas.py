@@ -16,6 +16,16 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 # -----------------------------------------------
 
+# Carga variables desde un archivo .env (junto al script) si existe, para no
+# depender de configurar variables de entorno del sistema en Windows/IDLE.
+# Si python-dotenv no está instalado, simplemente se ignora y se sigue
+# leyendo de variables de entorno reales (útil en servidores/servicios).
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
+
 # ==========================================
 # 0. CONFIGURACIÓN DE LA CAJA NEGRA (LOGGING)
 # ==========================================

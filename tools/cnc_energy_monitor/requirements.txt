@@ -1,0 +1,5 @@
+requests
+influxdb-client
+mysql-connector-python
+matplotlib
+python-dotenv
