@@ -53,6 +53,11 @@ INFLUX_TOKEN = _requerido("INFLUX_TOKEN")
 INFLUX_ORG = os.environ.get("INFLUX_ORG", "noramex")
 INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET", "haas_vf9_energy")
 
+GRAFANA_TOKEN = _requerido("GRAFANA_TOKEN")
+GRAFANA_DASHBOARD_URL = os.environ.get(
+    "GRAFANA_DASHBOARD_URL", "http://localhost:3000/api/dashboards/uid/adv9hsz"
+)
+
 MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
 MYSQL_USER = os.environ.get("MYSQL_USER", "root")
 MYSQL_PASSWORD = _requerido("MYSQL_PASSWORD")
@@ -115,28 +120,73 @@ logging.info(f"Rango de consulta: {inicio} a {fin} | Turno: {nombre_turno}")
 logging.info(f"Configuración -> Guardar BD: {guardar_en_db} | Enviar Telegram: {enviar_telegram}")
 
 # ==========================================
-# 3. TARIFAS CFE (archivo de configuración local)
+# 3. TARIFAS CFE (Grafana + caché local de respaldo)
 # ==========================================
-# Antes se leían desde variables de un dashboard de Grafana, pero esa API
-# fallaba con frecuencia y el script quedaba usando los precios default sin
-# avisar a nadie. Ahora se leen de un JSON local que tú actualizas a mano
-# cuando cambie la tarifa (ver tarifas_cfe.json junto a este script).
-logging.info("[PASO 2/7] Cargando tarifas CFE desde configuración local...")
+# Gerencia sigue editando el precio en las variables del dashboard de
+# Grafana (es la única forma que tienen de cambiarlo sin tocar código).
+# Pero esa API falla con frecuencia, así que:
+#   1) Primero se carga la última tarifa guardada en tarifas_cfe.json.
+#   2) Se intenta refrescarla contra Grafana; si responde bien, se
+#      actualizan los precios en memoria Y se reescribe el JSON.
+#   3) Si Grafana falla por cualquier motivo, se sigue usando lo que ya
+#      había en el JSON (no se vuelve a los defaults "de fábrica").
+logging.info("[PASO 2/7] Cargando tarifas CFE (caché local + Grafana)...")
 precios_cfe = {"Base": 1.15, "Intermedia": 2.00, "Punta": 5.00}
+tarifas_actualizado = None
 
 try:
     with open(RUTA_TARIFAS_CFE, "r", encoding="utf-8") as f:
-        tarifas_config = json.load(f)
+        cache_tarifas = json.load(f)
     for clave in ("Base", "Intermedia", "Punta"):
-        if clave in tarifas_config:
-            precios_cfe[clave] = float(tarifas_config[clave])
-        else:
-            logging.warning(f"'{clave}' no está en {RUTA_TARIFAS_CFE}; se usa el default ${precios_cfe[clave]}.")
-    logging.info(f"Tarifas aplicadas: Base ${precios_cfe['Base']}, Int ${precios_cfe['Intermedia']}, Punta ${precios_cfe['Punta']}")
+        if clave in cache_tarifas:
+            precios_cfe[clave] = float(cache_tarifas[clave])
+    tarifas_actualizado = cache_tarifas.get("actualizado")
+    logging.info(f"Caché local cargada ({tarifas_actualizado or 'sin fecha registrada'}): {precios_cfe}")
 except FileNotFoundError:
-    logging.warning(f"No se encontró {RUTA_TARIFAS_CFE}. Usando precios default: {precios_cfe}")
+    logging.warning(f"No existe {RUTA_TARIFAS_CFE} todavía. Se parte de los precios default: {precios_cfe}")
 except (json.JSONDecodeError, TypeError, ValueError) as e:
-    logging.error(f"'{RUTA_TARIFAS_CFE}' está mal formado ({e}). Usando precios default: {precios_cfe}")
+    logging.error(f"'{RUTA_TARIFAS_CFE}' está corrupto ({e}). Se parte de los precios default: {precios_cfe}")
+
+try:
+    resp_dashboard = requests.get(
+        GRAFANA_DASHBOARD_URL, headers={"Authorization": GRAFANA_TOKEN}, timeout=15
+    )
+    resp_dashboard.raise_for_status()
+    variables = resp_dashboard.json().get("dashboard", {}).get("templating", {}).get("list", [])
+
+    mapa_variables = {"tarifa_base": "Base", "tarifa_intermedia": "Intermedia", "tarifa_punta": "Punta"}
+    tarifas_grafana = {}
+    for var in variables:
+        clave = mapa_variables.get(var.get("name"))
+        if clave is None:
+            continue
+        valor = var.get("current", {}).get("value")
+        if isinstance(valor, list):
+            valor = valor[0] if valor else ""
+        tarifas_grafana[clave] = float(str(valor).strip().replace("$", "").replace(",", ""))
+
+    faltantes = [c for c in ("Base", "Intermedia", "Punta") if c not in tarifas_grafana]
+    if faltantes:
+        raise ValueError(f"Grafana no devolvió las variables: {faltantes}")
+
+    precios_cfe.update(tarifas_grafana)
+    tarifas_actualizado = ahora.isoformat()
+
+    # Escritura atómica: primero a un archivo temporal y luego rename,
+    # para no dejar el JSON de respaldo a medio escribir si el proceso
+    # se interrumpe (y el respaldo deja de ser confiable).
+    tmp_path = RUTA_TARIFAS_CFE + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump({**precios_cfe, "actualizado": tarifas_actualizado}, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, RUTA_TARIFAS_CFE)
+
+    logging.info(f"Tarifas actualizadas desde Grafana y guardadas en caché: {precios_cfe}")
+
+except Exception as e:
+    logging.warning(
+        f"No se pudieron leer las tarifas desde Grafana ({e}). "
+        f"Se usan los últimos valores en caché ({tarifas_actualizado or 'sin fecha registrada'}): {precios_cfe}"
+    )
 
 # ==========================================
 # 4. EXTRACCIÓN DE DATOS INFLUXDB
