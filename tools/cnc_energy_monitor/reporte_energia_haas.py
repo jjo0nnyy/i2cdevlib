@@ -16,16 +16,6 @@ import matplotlib.dates as mdates
 import matplotlib.ticker as ticker
 # -----------------------------------------------
 
-# Carga variables desde un archivo .env (junto al script) si existe, para no
-# depender de configurar variables de entorno del sistema en Windows/IDLE.
-# Si python-dotenv no está instalado, simplemente se ignora y se sigue
-# leyendo de variables de entorno reales (útil en servidores/servicios).
-try:
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
-except ImportError:
-    pass
-
 # ==========================================
 # 0. CONFIGURACIÓN DE LA CAJA NEGRA (LOGGING)
 # ==========================================
@@ -46,37 +36,24 @@ tiempo_inicio_total = time.time()
 # ==========================================
 # 1. CREDENCIALES Y RUTAS
 # ==========================================
-# Las credenciales NUNCA deben quedar escritas en el código fuente:
-# se leen de variables de entorno y el proceso falla rápido si faltan.
-def _requerido(nombre_env):
-    valor = os.environ.get(nombre_env)
-    if not valor:
-        logging.error(f"Falta la variable de entorno obligatoria: {nombre_env}")
-        sys.exit(1)
-    return valor
+# Pega aquí tus valores reales directamente.
+TELEGRAM_TOKEN = "PON_AQUI_TU_TELEGRAM_TOKEN"
+CHAT_ID = "PON_AQUI_TU_CHAT_ID"
 
-TELEGRAM_TOKEN = _requerido("TELEGRAM_TOKEN")
-CHAT_ID = _requerido("TELEGRAM_CHAT_ID")
+INFLUX_URL = "http://localhost:8086"
+INFLUX_TOKEN = "PON_AQUI_TU_INFLUX_TOKEN"
+INFLUX_ORG = "noramex"
+INFLUX_BUCKET = "haas_vf9_energy"
 
-INFLUX_URL = os.environ.get("INFLUX_URL", "http://localhost:8086")
-INFLUX_TOKEN = _requerido("INFLUX_TOKEN")
-INFLUX_ORG = os.environ.get("INFLUX_ORG", "noramex")
-INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET", "haas_vf9_energy")
+GRAFANA_TOKEN = "PON_AQUI_TU_GRAFANA_TOKEN"
+GRAFANA_DASHBOARD_URL = "http://localhost:3000/api/dashboards/uid/adv9hsz"
 
-GRAFANA_TOKEN = _requerido("GRAFANA_TOKEN")
-GRAFANA_DASHBOARD_URL = os.environ.get(
-    "GRAFANA_DASHBOARD_URL", "http://localhost:3000/api/dashboards/uid/adv9hsz"
-)
+MYSQL_HOST = "localhost"
+MYSQL_USER = "root"
+MYSQL_PASSWORD = "PON_AQUI_TU_MYSQL_PASSWORD"
+MYSQL_DATABASE = "ems_noramex"
 
-MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
-MYSQL_USER = os.environ.get("MYSQL_USER", "root")
-MYSQL_PASSWORD = _requerido("MYSQL_PASSWORD")
-MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "ems_noramex")
-
-RUTA_TARIFAS_CFE = os.environ.get(
-    "RUTA_TARIFAS_CFE",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "tarifas_cfe.json")
-)
+RUTA_TARIFAS_CFE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tarifas_cfe.json")
 
 # ==========================================
 # 1b. UMBRALES DE OPERACIÓN

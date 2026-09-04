@@ -10,7 +10,4 @@ PIC18/MPU6050/Examples/MPU6050_raw.X/build/
 /dsPIC30F/MPU6050/Examples/MPU6050_example.X/dist/default/
 ESP32_ESP-IDF/build/
 ESP32_ESP-IDF/sdkconfig
-
-# tools/cnc_energy_monitor: nunca versionar credenciales locales
-tools/cnc_energy_monitor/.env
 __pycache__/

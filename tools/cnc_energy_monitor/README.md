@@ -4,50 +4,15 @@ Script de monitoreo de consumo eléctrico que consulta InfluxDB,
 calcula costos por tarifa CFE (Grafana + caché local de respaldo)
 y envía un reporte a Telegram.
 
-## Variables de entorno requeridas
+## Configuración
 
-El script ya no acepta credenciales dentro del código. Son obligatorias:
+Las credenciales se pegan directamente en las constantes al inicio del
+script (`TELEGRAM_TOKEN`, `CHAT_ID`, `INFLUX_TOKEN`, `GRAFANA_TOKEN`,
+`MYSQL_PASSWORD`, etc.), igual que antes — reemplaza los placeholders
+`PON_AQUI_TU_...` por tus valores reales.
 
-- `TELEGRAM_TOKEN`
-- `TELEGRAM_CHAT_ID`
-- `INFLUX_TOKEN`
-- `GRAFANA_TOKEN`
-- `MYSQL_PASSWORD`
-
-Opcionales (tienen valor por defecto):
-
-- `INFLUX_URL` (default `http://localhost:8086`)
-- `INFLUX_ORG` (default `noramex`)
-- `INFLUX_BUCKET` (default `haas_vf9_energy`)
-- `GRAFANA_DASHBOARD_URL` (default `http://localhost:3000/api/dashboards/uid/adv9hsz`)
-- `MYSQL_HOST` (default `localhost`)
-- `MYSQL_USER` (default `root`)
-- `MYSQL_DATABASE` (default `ems_noramex`)
-- `RUTA_TARIFAS_CFE` (default: `tarifas_cfe.json` junto al script)
-
-### Cómo definirlas — opción recomendada para pruebas en Windows/IDLE
-
-Configurar variables de entorno del sistema en Windows es incómodo (hay
-que abrir "Variables de entorno", reiniciar IDLE, etc.) y es fácil
-equivocarse: la variable necesita un **nombre** (p. ej. `TELEGRAM_TOKEN`)
-y un **valor** (el token en sí) — si se invierten, el script no
-encuentra la variable y falla con "Falta la variable de entorno
-obligatoria: <lo que hayas puesto como nombre>".
-
-Es más simple usar un archivo `.env`, que el script carga solo:
-
-1. `pip install -r requirements.txt` (o al menos `pip install python-dotenv`)
-2. Copia `.env.example` a `.env` (misma carpeta que el script).
-3. Edita `.env` y llena cada valor **a la derecha del `=`**, por ejemplo:
-   ```
-   TELEGRAM_TOKEN=8553446968:AAHhW0ZSx6uVKwUxSqr12OdA8fvs9BXtzzw
-   ```
-4. Corre el script normal (F5 en IDLE, o `python reporte_energia_haas.py`).
-
-`.env` está en `.gitignore`: nunca se sube al repositorio. Si prefieres
-variables de entorno reales del sistema (por ejemplo para correrlo como
-tarea programada/servicio en un servidor), también funcionan — el
-`.env` es solo una comodidad adicional, no reemplaza nada.
+`pip install -r requirements.txt` instala las dependencias
+(`requests`, `influxdb-client`, `mysql-connector-python`, `matplotlib`).
 
 ## Tarifas CFE
 
