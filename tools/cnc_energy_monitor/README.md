@@ -1,7 +1,8 @@
 # Reporte de energía HAAS VF-9
 
-Script de monitoreo de consumo eléctrico que consulta InfluxDB/Grafana,
-calcula costos por tarifa CFE y envía un reporte a Telegram.
+Script de monitoreo de consumo eléctrico que consulta InfluxDB,
+calcula costos por tarifa CFE (desde un archivo de configuración local)
+y envía un reporte a Telegram.
 
 ## Variables de entorno requeridas
 
@@ -12,7 +13,6 @@ o como variables del sistema/servicio):
 - `TELEGRAM_TOKEN`
 - `TELEGRAM_CHAT_ID`
 - `INFLUX_TOKEN`
-- `GRAFANA_TOKEN`
 - `MYSQL_PASSWORD`
 
 Opcionales (tienen valor por defecto):
@@ -23,6 +23,25 @@ Opcionales (tienen valor por defecto):
 - `MYSQL_HOST` (default `localhost`)
 - `MYSQL_USER` (default `root`)
 - `MYSQL_DATABASE` (default `ems_noramex`)
+- `RUTA_TARIFAS_CFE` (default: `tarifas_cfe.json` junto al script)
+
+## Tarifas CFE
+
+Ya no se consultan desde la API de Grafana (fallaba con frecuencia y el
+script terminaba usando los precios default sin que nadie se enterara).
+Ahora se leen de `tarifas_cfe.json`, junto al script:
+
+```json
+{
+  "Base": 1.15,
+  "Intermedia": 2.00,
+  "Punta": 5.00
+}
+```
+
+Edita ese archivo cuando CFE actualice la tarifa GDMTH. Si el archivo no
+existe o está mal formado, el script lo registra en el log (WARNING/ERROR)
+y sigue con los precios default — ya no falla en silencio.
 
 ## Alerta por consumo mínimo
 

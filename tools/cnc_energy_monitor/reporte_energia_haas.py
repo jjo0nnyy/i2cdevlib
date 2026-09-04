@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import sys
 import mysql.connector
 import csv
+import json
 import os
 import shutil
 
@@ -51,12 +52,16 @@ INFLUX_URL = os.environ.get("INFLUX_URL", "http://localhost:8086")
 INFLUX_TOKEN = _requerido("INFLUX_TOKEN")
 INFLUX_ORG = os.environ.get("INFLUX_ORG", "noramex")
 INFLUX_BUCKET = os.environ.get("INFLUX_BUCKET", "haas_vf9_energy")
-GRAFANA_TOKEN = _requerido("GRAFANA_TOKEN")
 
 MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
 MYSQL_USER = os.environ.get("MYSQL_USER", "root")
 MYSQL_PASSWORD = _requerido("MYSQL_PASSWORD")
 MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "ems_noramex")
+
+RUTA_TARIFAS_CFE = os.environ.get(
+    "RUTA_TARIFAS_CFE",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "tarifas_cfe.json")
+)
 
 # ==========================================
 # 1b. UMBRALES DE OPERACIÓN
@@ -110,33 +115,28 @@ logging.info(f"Rango de consulta: {inicio} a {fin} | Turno: {nombre_turno}")
 logging.info(f"Configuración -> Guardar BD: {guardar_en_db} | Enviar Telegram: {enviar_telegram}")
 
 # ==========================================
-# 3. EXTRACCIÓN DE PRECIOS CFE
+# 3. TARIFAS CFE (archivo de configuración local)
 # ==========================================
-logging.info("[PASO 2/7] Obteniendo tarifas CFE vigentes...")
+# Antes se leían desde variables de un dashboard de Grafana, pero esa API
+# fallaba con frecuencia y el script quedaba usando los precios default sin
+# avisar a nadie. Ahora se leen de un JSON local que tú actualizas a mano
+# cuando cambie la tarifa (ver tarifas_cfe.json junto a este script).
+logging.info("[PASO 2/7] Cargando tarifas CFE desde configuración local...")
 precios_cfe = {"Base": 1.15, "Intermedia": 2.00, "Punta": 5.00}
 
 try:
-    url_api_grafana = "http://localhost:3000/api/dashboards/uid/adv9hsz"
-    resp_dashboard = requests.get(url_api_grafana, headers={"Authorization": GRAFANA_TOKEN}, timeout=30)
-    if resp_dashboard.status_code == 200:
-        variables = resp_dashboard.json().get("dashboard", {}).get("templating", {}).get("list", [])
-        for var in variables:
-            nombre_var = var.get("name")
-            valor = var.get("current", {}).get("value")
-            if nombre_var in ["tarifa_base", "tarifa_intermedia", "tarifa_punta"]:
-                try:
-                    if isinstance(valor, list): valor = valor[0] if len(valor) > 0 else ""
-                    val_limpio = float(str(valor).strip().replace("$", "").replace(",", ""))
-                    if nombre_var == "tarifa_base": precios_cfe["Base"] = val_limpio
-                    elif nombre_var == "tarifa_intermedia": precios_cfe["Intermedia"] = val_limpio
-                    elif nombre_var == "tarifa_punta": precios_cfe["Punta"] = val_limpio
-                except Exception as e:
-                    logging.warning(f"No se pudo interpretar la tarifa '{nombre_var}'={valor!r}: {e}")
-        logging.info(f"Tarifas aplicadas: Base ${precios_cfe['Base']}, Int ${precios_cfe['Intermedia']}, Punta ${precios_cfe['Punta']}")
-    else:
-        logging.warning("No se pudo conectar con Grafana API. Usando precios default.")
-except Exception as e:
-    logging.error(f"Error en extracción de precios: {e}")
+    with open(RUTA_TARIFAS_CFE, "r", encoding="utf-8") as f:
+        tarifas_config = json.load(f)
+    for clave in ("Base", "Intermedia", "Punta"):
+        if clave in tarifas_config:
+            precios_cfe[clave] = float(tarifas_config[clave])
+        else:
+            logging.warning(f"'{clave}' no está en {RUTA_TARIFAS_CFE}; se usa el default ${precios_cfe[clave]}.")
+    logging.info(f"Tarifas aplicadas: Base ${precios_cfe['Base']}, Int ${precios_cfe['Intermedia']}, Punta ${precios_cfe['Punta']}")
+except FileNotFoundError:
+    logging.warning(f"No se encontró {RUTA_TARIFAS_CFE}. Usando precios default: {precios_cfe}")
+except (json.JSONDecodeError, TypeError, ValueError) as e:
+    logging.error(f"'{RUTA_TARIFAS_CFE}' está mal formado ({e}). Usando precios default: {precios_cfe}")
 
 # ==========================================
 # 4. EXTRACCIÓN DE DATOS INFLUXDB
