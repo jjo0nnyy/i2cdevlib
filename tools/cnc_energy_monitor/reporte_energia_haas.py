@@ -472,6 +472,20 @@ else:
 # ==========================================
 # ENVÍO A TELEGRAM
 # ==========================================
+def enviar_a_telegram(url, data, files=None, descripcion=""):
+    """POST a la API de Telegram, verificando la respuesta en vez de asumir éxito
+    solo porque la petición no lanzó una excepción de red."""
+    resp = requests.post(url, data=data, files=files, timeout=60)
+    cuerpo = {}
+    try:
+        cuerpo = resp.json()
+    except ValueError:
+        pass
+    if not resp.ok or not cuerpo.get("ok", False):
+        descripcion_error = cuerpo.get("description", resp.text[:300])
+        raise RuntimeError(f"Telegram rechazó {descripcion} (HTTP {resp.status_code}): {descripcion_error}")
+    return cuerpo
+
 if enviar_telegram:
     logging.info("Enviando datos a Telegram...")
     try:
@@ -480,9 +494,18 @@ if enviar_telegram:
 
         if foto_lista:
             with open(nombre_foto, "rb") as f:
-                requests.post(url_tel_foto, data={"chat_id": CHAT_ID, "message_thread_id": 42, "caption": "📊 Gráfico de Consumo Energético"}, files={"photo": f}, timeout=60)
+                enviar_a_telegram(
+                    url_tel_foto,
+                    data={"chat_id": CHAT_ID, "message_thread_id": 42, "caption": "📊 Gráfico de Consumo Energético"},
+                    files={"photo": f},
+                    descripcion="la foto",
+                )
 
-        requests.post(url_tel_texto, data={"chat_id": CHAT_ID, "message_thread_id": 42, "text": reporte_texto, "parse_mode": "Markdown"}, timeout=60)
+        enviar_a_telegram(
+            url_tel_texto,
+            data={"chat_id": CHAT_ID, "message_thread_id": 42, "text": reporte_texto, "parse_mode": "Markdown"},
+            descripcion="el texto del reporte",
+        )
         logging.info("✅ Reporte entregado en Telegram.")
 
     except Exception as e:
