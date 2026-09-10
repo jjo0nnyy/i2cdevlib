@@ -48,6 +48,26 @@ mantiene al día cada vez que Grafana responde. Si quieres forzar un valor
 manualmente (por ejemplo si Grafana estará caído varios días), edítalo y
 el script lo respetará hasta que Grafana vuelva a responder.
 
+## Blindaje contra lecturas erróneas del sensor
+
+Al desconectar el equipo (o ante cualquier glitch eléctrico), el sensor
+puede reportar por una fracción de segundo un valor absurdo de corriente
+o voltaje. Un solo dato así arruina el `max()`/`min()`/`spread()` de toda
+la ventana de tiempo (por ejemplo, un consumo de "millones de A" que
+infla el kWh y el costo del reporte a cifras imposibles).
+
+El script ahora descarta, antes de agregarlos, cualquier valor de
+corriente fuera de `[0, CORRIENTE_MAX_VALIDA]` A o de voltaje fuera de
+`[0, VOLTAJE_MAX_VALIDO]` V (ajustados a tu instalación: 220V
+trifásicos, hasta 150 A por fase). Para la energía por bloque, se
+calcula la potencia máxima físicamente posible con esos límites
+(`√3 · V · I`) y se descarta cualquier lectura de `spread()` que la
+supere, registrando un `WARNING` en el log con el bloque afectado.
+
+Ajusta `VOLTAJE_NOMINAL`, `CORRIENTE_MAX_VALIDA` y `VOLTAJE_MAX_VALIDO`
+en la sección `1c` del script si cambia la instalación eléctrica o la
+máquina.
+
 ## Alerta por consumo mínimo
 
 Si en el bloque de tiempo el consumo (`kwh_total`) y el pico de corriente

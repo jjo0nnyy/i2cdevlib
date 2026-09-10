@@ -64,6 +64,25 @@ UMBRAL_KWH_MINIMO = 0.05        # kWh mínimos para considerar actividad real
 UMBRAL_AMPERAJE_MINIMO = 1.0    # Pico de amperaje mínimo para considerar actividad real
 
 # ==========================================
+# 1c. LÍMITES FÍSICOS VÁLIDOS (blindaje contra lecturas erróneas)
+# ==========================================
+# Al desconectar el equipo, el sensor puede escupir por una fracción de
+# segundo una lectura absurda (millones de A/V). Un solo dato así arruina
+# max()/min()/spread() de toda la ventana. Estos límites descartan esas
+# lecturas ANTES de agregarlas, en vez de reportarlas como reales.
+VOLTAJE_NOMINAL = 220           # V trifásicos de la instalación
+CORRIENTE_MAX_VALIDA = 150      # A por fase; margen sobre el consumo real del VF-9
+VOLTAJE_MAX_VALIDO = 260        # V; margen sobre el nominal de 220V
+
+# Potencia trifásica máxima físicamente posible con esos límites: P = √3 · V · I
+POTENCIA_MAX_KW = round((3 ** 0.5) * VOLTAJE_NOMINAL * CORRIENTE_MAX_VALIDA / 1000, 1)
+# Margen extra sobre esa potencia teórica para no descartar picos reales de arranque.
+KWH_MAX_POR_BLOQUE = round(POTENCIA_MAX_KW * 1.5, 1)
+
+FILTRO_CORRIENTE_VALIDA = f'|> filter(fn: (r) => r["_value"] >= 0 and r["_value"] <= {CORRIENTE_MAX_VALIDA})'
+FILTRO_VOLTAJE_VALIDO = f'|> filter(fn: (r) => r["_value"] >= 0 and r["_value"] <= {VOLTAJE_MAX_VALIDO})'
+
+# ==========================================
 # 2. LÓGICA DE TURNOS, TIEMPOS Y COMPORTAMIENTO
 # ==========================================
 logging.info("[PASO 1/7] Calculando ventanas de tiempo y horarios locales...")
@@ -191,11 +210,11 @@ def obtener_valor(q):
         return 0.0
 
 rango = f"|> range(start: {ts_inicio}, stop: {ts_fin})"
-pico_amperaje = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") |> max()')
-voltaje_min = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "voltaje") |> min()')
-voltaje_max = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "voltaje") |> max()')
-puntos_totales = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") |> count()')
-puntos_standby = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") |> filter(fn: (r) => r["_value"] < 2.0) |> count()')
+pico_amperaje = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") {FILTRO_CORRIENTE_VALIDA} |> max()')
+voltaje_min = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "voltaje") {FILTRO_VOLTAJE_VALIDO} |> min()')
+voltaje_max = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "voltaje") {FILTRO_VOLTAJE_VALIDO} |> max()')
+puntos_totales = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") {FILTRO_CORRIENTE_VALIDA} |> count()')
+puntos_standby = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") {FILTRO_CORRIENTE_VALIDA} |> filter(fn: (r) => r["_value"] < 2.0) |> count()')
 
 costo_total = 0.0
 kwh_total = 0.0
@@ -228,6 +247,14 @@ for h in range(12):
     q_bloque = f'from(bucket: "{INFLUX_BUCKET}") |> range(start: {r_ini}, stop: {r_fin}) |> filter(fn: (r) => r["_field"] == "energia") |> spread()'
     k_bloque = obtener_valor(q_bloque) * 3.0
 
+    if k_bloque < 0 or k_bloque > KWH_MAX_POR_BLOQUE:
+        logging.warning(
+            f"Bloque {t_bloque_inicio.strftime('%H:%M')}-{t_bloque_fin.strftime('%H:%M')}: "
+            f"lectura de energía descartada ({k_bloque} kWh supera el máximo físico posible "
+            f"de {KWH_MAX_POR_BLOQUE} kWh/hora; probable glitch de sensor por desconexión)."
+        )
+        k_bloque = 0.0
+
     kwh_total += k_bloque
     costo_total += (k_bloque * precios_cfe[tarifa_actual])
 
@@ -245,7 +272,7 @@ oee_real = round(((minutos_totales - minutos_standby) / minutos_totales * 100), 
 RES_SEGS = 60
 PUNTOS_MIN = int(60 / RES_SEGS)
 
-q_serie_corriente = f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") |> aggregateWindow(every: {RES_SEGS}s, fn: max)'
+q_serie_corriente = f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filter(fn: (r) => r["_field"] == "corriente") {FILTRO_CORRIENTE_VALIDA} |> aggregateWindow(every: {RES_SEGS}s, fn: max)'
 serie_corriente = []
 try:
     res_serie = query_api.query(org=INFLUX_ORG, query=q_serie_corriente)
