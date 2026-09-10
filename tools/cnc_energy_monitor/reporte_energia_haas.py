@@ -219,6 +219,7 @@ puntos_standby = obtener_valor(f'from(bucket: "{INFLUX_BUCKET}") {rango} |> filt
 costo_total = 0.0
 kwh_total = 0.0
 kwh_base, kwh_inter, kwh_punta = 0.0, 0.0, 0.0
+costo_base, costo_inter, costo_punta = 0.0, 0.0, 0.0
 
 logging.info("Calculando desglose energético GDMTH por horas locales...")
 ahora_ts = int(datetime.now().timestamp())
@@ -255,12 +256,19 @@ for h in range(12):
         )
         k_bloque = 0.0
 
+    costo_bloque = k_bloque * precios_cfe[tarifa_actual]
     kwh_total += k_bloque
-    costo_total += (k_bloque * precios_cfe[tarifa_actual])
+    costo_total += costo_bloque
 
-    if tarifa_actual == "Base": kwh_base += k_bloque
-    elif tarifa_actual == "Intermedia": kwh_inter += k_bloque
-    else: kwh_punta += k_bloque
+    if tarifa_actual == "Base":
+        kwh_base += k_bloque
+        costo_base += costo_bloque
+    elif tarifa_actual == "Intermedia":
+        kwh_inter += k_bloque
+        costo_inter += costo_bloque
+    else:
+        kwh_punta += k_bloque
+        costo_punta += costo_bloque
 
 minutos_totales = (limite_ts - ts_inicio) / 60
 minutos_totales = max(0, minutos_totales)
@@ -385,7 +393,10 @@ else:
 ⚡ *ENERGÍA Y COSTOS:*
 • Consumo Total: {kwh_total} kWh
 • Costo Estimado: ${costo_total} MXN
-• Desglose CFE: Base: {round(kwh_base,1)} | Int: {round(kwh_inter,1)} | Punta: {round(kwh_punta,1)}
+• Desglose CFE:
+   - Base: {round(kwh_base,2)} kWh (${round(costo_base,2)})
+   - Intermedia: {round(kwh_inter,2)} kWh (${round(costo_inter,2)})
+   - Punta: {round(kwh_punta,2)} kWh (${round(costo_punta,2)})
 
 📊 *ESTADO OPERATIVO:*
 • OEE Real: {oee_real}%
