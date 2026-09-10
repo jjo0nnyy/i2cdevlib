@@ -72,7 +72,7 @@ UMBRAL_AMPERAJE_MINIMO = 1.0    # Pico de amperaje mínimo para considerar activ
 # lecturas ANTES de agregarlas, en vez de reportarlas como reales.
 VOLTAJE_NOMINAL = 220           # V trifásicos de la instalación
 CORRIENTE_MAX_VALIDA = 150      # A por fase; margen sobre el consumo real del VF-9
-VOLTAJE_MAX_VALIDO = 260        # V; margen sobre el nominal de 220V
+VOLTAJE_MAX_VALIDO = 300        # V; margen sobre el nominal de 220V
 
 # Potencia trifásica máxima físicamente posible con esos límites: P = √3 · V · I
 POTENCIA_MAX_KW = round((3 ** 0.5) * VOLTAJE_NOMINAL * CORRIENTE_MAX_VALIDA / 1000, 1)
