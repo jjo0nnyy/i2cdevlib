@@ -14,6 +14,58 @@ script (`TELEGRAM_TOKEN`, `CHAT_ID`, `INFLUX_TOKEN`, `GRAFANA_TOKEN`,
 `pip install -r requirements.txt` instala las dependencias
 (`requests`, `influxdb-client`, `mysql-connector-python`, `matplotlib`).
 
+## Resiliencia de la infraestructura (PC + Docker)
+
+Este script depende de que el PC esté encendido y de que InfluxDB/Grafana/
+MySQL (corriendo en Docker) estén disponibles. Dos configuraciones
+recomendadas para que se recupere solo:
+
+**Encendido automático tras un apagón** — se configura en el BIOS/UEFI
+del PC (no en Windows): busca `Restore on AC Power Loss` / `AC Back
+Function` / `After Power Failure` (el nombre varía según la marca de la
+tarjeta madre) y ponlo en `Power On`.
+
+**Reinicio diario de Docker Desktop** — `reiniciar_docker.ps1` (junto a
+este script) cierra y vuelve a levantar Docker Desktop completo. Se
+programa con el Programador de Tareas de Windows:
+
+1. Abre `taskschd.msc` → **Crear tarea** (no "tarea básica", para tener
+   más opciones).
+2. **General:** nómbrala, marca "Ejecutar con los privilegios más
+   altos". Si quieres que corra sin que haya una sesión iniciada, marca
+   "Ejecutar tanto si el usuario inició sesión como si no" (ver nota
+   abajo).
+3. **Desencadenadores:** Nuevo → Diario → hora sugerida **03:00 a. m.**
+   (para no chocar con los turnos del reporte a las 6:00/18:00/22:00 y
+   darle tiempo a los contenedores de estar listos antes del reporte de
+   las 6 AM).
+4. **Acciones:** Nuevo → "Iniciar un programa":
+   - Programa/script: `powershell.exe`
+   - Argumentos: `-ExecutionPolicy Bypass -File "C:\Monitor_Energia_Haas\Python alerts\reiniciar_docker.ps1"`
+     (ajusta la ruta a donde copies el `.ps1`)
+5. **Condiciones:** desmarca "Iniciar la tarea solo si el equipo está
+   conectado a la corriente alterna" si es una laptop.
+6. **Configuración:** marca "Ejecutar la tarea tan pronto como sea
+   posible después de omitir un inicio programado" (por si el PC estaba
+   apagado a las 3 AM).
+
+**Nota:** si eliges "Ejecutar tanto si el usuario inició sesión como si
+no", algunas versiones de Docker Desktop pueden fallar en abrir su
+interfaz sin una sesión de escritorio activa. Si el reinicio no levanta
+Docker, la alternativa es "Ejecutar solo si el usuario inició sesión" +
+inicio de sesión automático de Windows configurado (igual que
+necesitarías para que este mismo script de Python corra solo tras un
+apagón, en vez de abrirlo a mano en IDLE).
+
+**Importante:** para que los contenedores (InfluxDB, Grafana, MySQL)
+vuelvan a levantarse solos después del reinicio, cada uno debe tener
+configurada una política de reinicio `unless-stopped` o `always` (por
+ejemplo `docker run --restart unless-stopped ...` o el equivalente
+`restart: unless-stopped` en su `docker-compose.yml`). Revísalo con
+`docker inspect <contenedor> --format='{{.HostConfig.RestartPolicy.Name}}'`
+— si dice `no` o está vacío, el contenedor se va a quedar apagado tras
+el reinicio hasta que alguien lo levante a mano.
+
 ## Tarifas CFE
 
 Gerencia sigue editando el precio en las variables `tarifa_base`,
