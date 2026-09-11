@@ -9,6 +9,7 @@ import csv
 import json
 import os
 import shutil
+import statistics
 
 # --- LIBRERÍAS NUEVAS PARA DIBUJAR LA GRÁFICA ---
 import matplotlib.pyplot as plt
@@ -419,11 +420,30 @@ else:
 nombre_foto = "reporte_grafana.png"
 foto_lista = False
 
+def percentil(datos, p):
+    """Percentil p (0-100) de una lista de números, sin depender de numpy."""
+    datos_validos = sorted(v for v in datos if v is not None)
+    if len(datos_validos) < 2:
+        return datos_validos[0] if datos_validos else 0.0
+    cortes = statistics.quantiles(datos_validos, n=100, method="inclusive")
+    indice = min(max(int(p) - 1, 0), len(cortes) - 1)
+    return cortes[indice]
+
 if generar_grafico:
     logging.info("[PASO 6/7] Generando gráfico de alta resolución...")
     try:
         MULTIPLICADOR_AMPERAJE = 1.0
         UMBRAL_STANDBY = 2.0
+
+        # Gerencia pidió que los picos no aplasten visualmente el rango donde
+        # la máquina realmente opera la mayor parte del tiempo. En vez de
+        # escalar el eje Y al máximo absoluto del día (lo que deja el rango
+        # continuo de maquinado como una línea plana en la parte baja),
+        # se usa un percentil como techo: los picos raros/breves quedan
+        # comprimidos arriba (recortados visualmente) sin perder el dato —
+        # se anota su valor real por separado.
+        PERCENTIL_ESCALA = 75     # % de las lecturas que caben dentro de la escala normal
+        MARGEN_ESCALA = 1.3       # margen extra sobre ese percentil
 
         tiempo_x = [inicio + timedelta(seconds=i*RES_SEGS) for i in range(len(serie_corriente))]
 
@@ -452,10 +472,21 @@ if generar_grafico:
                     color='#FF4500', fontsize=10, fontweight='bold', bbox=bbox_props, zorder=4)
 
         max_amp = max(serie_limpia) if serie_limpia else 0
-        limite_superior = max_amp * 1.2 if max_amp > 0 else 10
+        techo_normal = percentil(serie_limpia, PERCENTIL_ESCALA) if serie_limpia else 0
+        limite_superior = max(techo_normal * MARGEN_ESCALA, UMBRAL_STANDBY * 2, 5.0)
 
         ax.set_ylim(bottom=0, top=limite_superior)
         ax.yaxis.set_major_locator(ticker.MaxNLocator(10))
+
+        if max_amp > limite_superior:
+            ax.annotate(
+                f'⚠ Pico real: {max_amp:.1f} A (fuera de escala)',
+                xy=(0.98, 0.97), xycoords='axes fraction',
+                ha='right', va='top',
+                color='#FF4500', fontsize=10, fontweight='bold',
+                bbox=dict(boxstyle="round,pad=0.3", fc="#000000", ec="#FF4500", alpha=0.8),
+                zorder=5,
+            )
 
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))

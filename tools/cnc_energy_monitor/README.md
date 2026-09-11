@@ -129,3 +129,25 @@ parámetros. En su lugar envía un mensaje corto a Telegram indicando que no
 se detectó actividad de la máquina (o que no llegaron datos del sensor), y
 omite la generación del gráfico. El guardado en base de datos histórica no
 se ve afectado por esta condición.
+
+## Escala del gráfico (picos vs. rango continuo)
+
+Antes, el eje Y del gráfico se ajustaba al máximo absoluto del día
+(`max × 1.2`), así que un solo pico de corriente estiraba toda la escala
+y el rango donde la máquina realmente opera la mayor parte del tiempo
+quedaba aplastado abajo, casi ilegible.
+
+Ahora el techo del eje Y se calcula con un **percentil** de las lecturas
+del día (`PERCENTIL_ESCALA = 75`, con un margen `MARGEN_ESCALA = 1.3`),
+en vez del máximo absoluto. Así, el rango "continuo" de maquinado ocupa
+casi toda la altura del gráfico, y los picos que superan ese techo
+simplemente se recortan visualmente arriba (no se pierden del cálculo
+de `pico_amperaje` en el texto del reporte, solo del dibujo). Cuando el
+pico real queda fuera de la escala dibujada, se agrega una anotación en
+la esquina superior del gráfico con el valor real (ej. "⚠ Pico real:
+59.8 A (fuera de escala)").
+
+Si el gráfico sigue viéndose muy comprimido o muy estirado según cómo
+trabaje tu máquina, ajusta `PERCENTIL_ESCALA` (más bajo = techo más
+apretado, más picos recortados) y `MARGEN_ESCALA` (aire extra sobre ese
+percentil) en la sección `[PASO 6/7]` del script.
